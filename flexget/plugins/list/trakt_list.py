@@ -25,6 +25,15 @@ def generate_show_title(item):
         return show_info['title']
 
 
+def generate_season_title(item):
+    show_info = item['show']
+    season_info = item['season']
+    if show_info['year']:
+        return '%s (%s) Season %d' % (show_info['title'], show_info['year'], season_info['number'])
+    else:
+        return '%s Season %d' % (show_info['title'], season_info['number'])
+
+
 def generate_episode_title(item):
     show_info = item['show']
     episode_info = item['episode']
@@ -58,6 +67,20 @@ field_maps = {
         'tvdb_id': 'show.ids.tvdb',
         'tvrage_id': 'show.ids.tvrage',
         'tmdb_id': 'show.ids.tmdb',
+        'trakt_show_id': 'show.ids.trakt',
+        'trakt_show_slug': 'show.ids.slug'
+    },
+    'season': {
+        'title': generate_season_title,
+        'series_name': generate_show_title,
+        'trakt_series_name': 'show.title',
+        'trakt_series_year': 'show.year',
+        'series_season': 'season.number',
+        'series_id': lambda i: 'Season %d' % (i['season']['number']),
+        'imdb_id': 'show.ids.imdb',
+        'tvdb_id': 'show.ids.tvdb',
+        'tvrage_id': 'show.ids.tvrage',
+        'trakt_season_id': 'season.ids.trakt',
         'trakt_show_id': 'show.ids.trakt',
         'trakt_show_slug': 'show.ids.slug'
     },
@@ -189,12 +212,15 @@ class TraktSet(MutableSet):
                     log.debug('Skipping %s because it is not a %s', item[item['type']].get('title', 'unknown'),
                               list_type)
                     continue
-                if list_type != 'episode' and not item[list_type]['title']:
+                if list_type in ['movie', 'show'] and not item[list_type]['title']:
                     # Skip shows/movies with no title
                     log.warning('Item in trakt list does not appear to have a title, skipping.')
                     continue
                 entry = Entry()
-                if list_type == 'episode':
+                if list_type == 'season':
+                    entry['url'] = 'https://trakt.tv/shows/%s/seasons/%s' % (
+                        item['show']['ids']['slug'], item['season']['number'])
+                elif list_type == 'episode':
                     entry['url'] = 'https://trakt.tv/shows/%s/seasons/%s/episodes/%s' % (
                         item['show']['ids']['slug'], item['episode']['season'], item['episode']['number'])
                 else:
@@ -204,7 +230,9 @@ class TraktSet(MutableSet):
                 if self.config.get('strip_dates'):
                     if list_type in ['show', 'movie']:
                         entry['title'] = item[list_type]['title']
-                    elif list_type == 'episode':
+                    elif list_type == 'season':
+                        entry['title'] = '{show[title]} Season {season[number]}'.format(**item)
+                    else:
                         entry['title'] = '{show[title]} S{episode[season]:02}E{episode[number]:02}'.format(**item)
                         if item['episode']['title']:
                             entry['title'] += ' {episode[title]}'.format(**item)
@@ -225,6 +253,7 @@ class TraktSet(MutableSet):
     def get_list_endpoint(self, remove=False, submit=False):
         # Api restriction, but we could easily extract season and episode info from the 'shows' type
         if not submit and self.config['list'] in ['collection', 'watched'] and self.config['type'] == 'episodes':
+            # if self.config['list'] in ['collection', 'watched'] and self.config['type'] in ['seasons', 'episodes']:
             raise plugin.PluginError('`type` cannot be `%s` for %s list.' % (self.config['type'], self.config['list']))
 
         if self.config['list'] in ['collection', 'watchlist', 'watched', 'ratings']:
@@ -313,10 +342,10 @@ class TraktSet(MutableSet):
             action = 'deleted' if remove else 'added'
             res = result.json()
             # Default to 0 for all categories, even if trakt response didn't include them
-            for cat in ('movies', 'shows', 'episodes', 'seasons'):
+            for cat in ('movies', 'shows', 'seasons', 'episodes'):
                 res[action].setdefault(cat, 0)
-            log.info('Successfully {0} to/from list {1}: {movies} movie(s), {shows} show(s), {episodes} episode(s), '
-                     '{seasons} season(s).'.format(action, self.config['list'], **res[action]))
+            log.info('Successfully {0} to/from list {1}: {movies} movie(s), {shows} show(s), {seasons} season(s), '
+                     '{episodes} episode(s).'.format(action, self.config['list'], **res[action]))
             for media_type, request in res['not_found'].items():
                 if request:
                     log.debug('not found %s: %s', media_type, request)
