@@ -176,6 +176,7 @@ class PluginTraktLookup(object):
         'trakt_movie_year': 'year',
         'trakt_movie_id': 'id',
         'trakt_movie_slug': 'slug',
+        'trakt_movie_url': lambda movie: movie.slug and 'https://trakt.tv/movies/%s' % movie.slug,
         'imdb_id': 'imdb_id',
         'tmdb_id': 'tmdb_id',
         'trakt_tagline': 'tagline',
